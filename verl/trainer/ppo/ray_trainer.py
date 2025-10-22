@@ -984,7 +984,13 @@ class RayPPOTrainer:
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
                         if not self.async_rollout_mode:
-                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                            while 1:
+                                try:
+                                    gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                                    break
+                                except:
+                                    gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                                
                         else:
                             gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch)
                         timing_raw.update(gen_batch_output.meta_info["timing"])

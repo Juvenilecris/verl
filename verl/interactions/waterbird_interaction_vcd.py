@@ -1,0 +1,129 @@
+# Copyright 2024 Bytedance Ltd. and/or its affiliates
+# Copyright 2023-2024 SGLang Team
+# Copyright 2025 ModelBest Inc. and/or its affiliates
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import os
+from typing import Any, Optional
+from uuid import uuid4
+import re
+from PIL import Image
+from verl.utils.reward_score import gsm8k
+from verl.interactions.qwenvl_utils import smart_resize,reverse_convert_to_original_format
+
+from .base import BaseInteraction
+import cv2
+logger = logging.getLogger(__name__)
+logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+
+def process_content(content,img_path,tag):
+    box_pattern = re.compile(rf"<{tag}>\[(\d+),(\d+),(\d+),(\d+)\]</{tag}>")
+    match = box_pattern.search(content)
+    if match:
+        reward=1.0
+        coords_str = match.groups()
+        box_coords = [int(c) for c in coords_str] # -> [x1, y1, x2, y2]
+        image = cv2.imread(img_path)
+        orig_height = image.shape[0]
+        orig_width = image.shape[1]
+        new_height, new_width = smart_resize(orig_height, orig_width)
+        box_coords=reverse_convert_to_original_format(box_coords,orig_height, orig_width, new_height, new_width)
+        assert box_coords[0]<box_coords[2]
+        assert box_coords[1]<box_coords[3]
+        original_image = Image.open(img_path).convert("RGB")
+        cropped_image = original_image.crop(box_coords)
+        from verl.utils.dataset.vision_utils import process_image, process_video
+        return process_image
+    else:
+        return None
+    
+
+class WaterbirdInteraction(BaseInteraction):
+    """A demo interaction for calculating the reward of gsm8k.
+
+    - `start_interaction`: start a interaction instance for a trajectory.
+    - `generate_response`: generate the response of the assistant.
+    - `calculate_score`: calculate the score of the interaction.
+    - `finalize_interaction`: finalize the interaction instance.
+    """
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self._instance_dict = {}
+
+    async def start_interaction(
+        self, instance_id: Optional[str] = None, ground_truth: Optional[str] = None, **kwargs
+    ) -> str:
+        if instance_id is None:
+            instance_id = str(uuid4())
+        self._instance_dict[instance_id] = {
+            "response": "",
+            "ground_truth": ground_truth,
+            "reward": 0.0,
+            "img_path":kwargs.pop('img_path', None)
+        }
+        return instance_id
+
+    async def generate_response(
+        self, instance_id: str, messages: list[dict[str, Any]], **kwargs
+    ) -> tuple[bool, str, float, dict]:
+        content = ""
+        for i in range(len(messages) - 1, -1, -1):
+            item = messages[i]
+            if item.get("role") == "assistant":
+                content = item.get("content")
+                break
+
+        self._instance_dict[instance_id]["response"] = content
+        img_path=self._instance_dict[instance_id]['img_path']
+        
+        try:
+            content_bird=content.split('and')[0]
+            content_back=content.split('and')[1]
+            bird_image=process_content(content_bird)
+            back_image=process_content(content_back)
+            if bird_image and back_image:
+                reward=1.0
+                images=[bird_image,back_image]
+                multi_modal_data = {
+                    "image": images
+                }
+                additional_data = {
+                    "multimodal_data": multi_modal_data
+                }
+                response="""* Step 2 Format: <answer>Waterbird or Landbird</answer>
+
+Step 2: Now, using the cropped image <image> of the bird and the cropped image of the background (based on your previous bounding box) provided, classify the bird as either a "Waterbird" or a "Landbird". Provide your classification result in the format <answer>Waterbird or Landbird</answer>."""
+                should_terminate_sequence=False
+            else:
+                reward=0.0
+                response = "Your response don't match format"
+                should_terminate_sequence = True
+                additional_data={}
+        except Exception as e:
+            print(e)
+            additional_data={}
+            response="Your response don't match format"
+            should_terminate_sequence = True
+            reward=0.0
+        
+        await self.finalize_interaction(instance_id)
+        return should_terminate_sequence, response, reward-1, additional_data
+
+    async def calculate_score(self, instance_id: str, **kwargs) -> float:
+        pass
+
+    async def finalize_interaction(self, instance_id: str, **kwargs) -> None:
+        del self._instance_dict[instance_id]

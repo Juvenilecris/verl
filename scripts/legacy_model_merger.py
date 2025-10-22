@@ -17,10 +17,11 @@ This script is used to merge huggingface model and test verl checkpoints from FS
 
 To merge FSDP checkpoints:
 ```sh
+export HF_ENDPOINT=https://hf-mirror.com
 python scripts/legacy_model_merger.py merge \
     --backend fsdp \
     --local_dir checkpoints/verl_fsdp_gsm8k_examples/qwen2_5_0b5_fsdp_saveload/global_step_1/actor \
-    --target_dir /path/to/merged_hf_model
+    --target_dir /path/to/merged_hf_model --hf_model_path Qwen/Qwen2.5-VL-3B-Instruct
 ```
 
 To merge Megatron checkpoints:
@@ -193,7 +194,7 @@ class BaseModelMerger(ABC):
     def save_hf_model_and_tokenizer(self, state_dict: dict[str, torch.Tensor]):
         auto_model_class = self.get_transformers_auto_model_class()
         with init_empty_weights():
-            model = auto_model_class.from_config(self.model_config, torch_dtype=torch.bfloat16)
+            model = auto_model_class.from_config(self.model_config)
         model.to_empty(device="cpu")
         model = self.patch_model_generation_config(model)
 

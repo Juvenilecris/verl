@@ -108,11 +108,12 @@ class AsyncRolloutRequest(BaseModel):
     response_loss_mask: Optional[torch.Tensor] = None
     reward_scores: dict[str, float]
     max_prompt_len: int
-    max_response_len: int = 8192
-    max_model_len: int = 32768
+    max_response_len: int = 8192*4
+    max_model_len: int = 32768*4
     metrics: dict[str, list[Any]] = {}
     output_token_ids: torch.Tensor | None = None
     rollout_log_probs: torch.Tensor | None = None
+    log_probs_token_ids: list[torch.Tensor] | None = None
 
     use_inference_chat_template: bool
     tokenization_sanity_check_mode: TokenizationSanityCheckModeEnum
@@ -377,17 +378,71 @@ class AsyncRolloutRequest(BaseModel):
         self,
         processing_class: PreTrainedTokenizer | PreTrainedTokenizerFast | ProcessorMixin,
         content: str,
+        multi_modal_data: Optional[dict[str, Any]] = None,
     ) -> None:
-        self.messages.append(Message(role="user", content=content))
+        """
+        Adds a user message, which can contain both text and multi-modal data.
+        """
+        if not multi_modal_data:
+            multi_modal_data = {}
+
+        # 1. Construct the message content list for multi-modal input
+        # This format is expected by the tokenizer's apply_chat_template for multi-modal models.
+        final_content: str | list[dict[str, Any]]
+        has_multi_modal = any(multi_modal_data.values())
+
+        if has_multi_modal:
+            content_list = []
+            # Add placeholders for images and videos
+            if images := multi_modal_data.get("image"):
+                content_list.extend([{"type": "image"}] * len(images))
+            if videos := multi_modal_data.get("video"):
+                content_list.extend([{"type": "video"}] * len(videos))
+            
+            # Add the text part
+            if content:
+                content_list.append({"type": "text", "text": content})
+            final_content = content_list
+        else:
+            final_content = content
+
+        self.messages.append(Message(role="user", content=final_content))
+
+        # 2. Update the request's main multi_modal_data store
+        if has_multi_modal:
+            for key in self.multi_modal_keys:
+                if new_data := multi_modal_data.get(key):
+                    self.multi_modal_data[key].extend(new_data)
+
         messages = [*BASE_CHAT_HISTORY, self.messages[-1]]
         tools = [tool.model_dump() for tool in self.tool_schemas] if self.tool_schemas else None
 
-        # We don't need to pass multi_modal_data here because we don't have any multi-modal data from Engine
-        # Inference, it is pure text.
-        content_ids = self._handle_apply_chat_template(
-            processing_class, messages, multi_modal_data={}, tools=tools, add_generation_prompt=False, tokenize=True
-        )[..., self.base_conv_wo_gen_prompt_end_pos :]
-        self._update_input_ids(processing_class, content_ids, attention_mask=True, loss_mask=False)
+        # 3. Get the full tokenization output dictionary, including multi-modal tensors
+        content_info = self._handle_apply_chat_template(
+            processing_class,
+            messages,
+            multi_modal_data=multi_modal_data,  # Pass the new data here
+            tools=tools,
+            add_generation_prompt=False,
+            tokenize=True,
+            return_dict=True,  # Crucial change: get the full dictionary
+        )
+
+        content_ids = content_info["input_ids"][..., self.base_conv_wo_gen_prompt_end_pos :]
+
+        # 4. Extract new multi-modal input tensors (e.g., pixel_values)
+        new_multi_modal_inputs = content_info.copy()
+        new_multi_modal_inputs.pop("input_ids", None)
+        new_multi_modal_inputs.pop("attention_mask", None)
+
+        # 5. Update all relevant input tensors together
+        self._update_input_ids(
+            processing_class,
+            content_ids,
+            attention_mask=True,
+            loss_mask=False,
+            new_multi_modal_inputs=new_multi_modal_inputs, # Pass the extracted tensors
+        )
 
     def add_assistant_message(
         self,

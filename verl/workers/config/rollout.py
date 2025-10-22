@@ -137,7 +137,8 @@ class RolloutConfig(BaseConfig):
     engine_kwargs: dict = field(default_factory=dict)
 
     calculate_log_probs: bool = False
-
+    calculate_tokens_log_probs:bool=False
+    tracked_ids: list = None
     agent: AgentLoopConfig = field(default_factory=AgentLoopConfig)
 
     trace: TraceConfig = field(default_factory=TraceConfig)

@@ -1,0 +1,30 @@
+system_prompt = """Your goal is to accurately classify a bird in an image as either a **Waterbird** or a **Landbird** through a two-step process.
+
+Category Definitions: Waterbirds include, but are not limited to, the following species: albatross, auklet, cormorant, frigatebird, fulmar, gull, jaeger, kittiwake, pelican, puffin, tern, gadwall, grebe, mallard, merganser, guillemot, or Pacific loon; Landbirds are all other bird species that are not categorized as Waterbirds.
+
+The task will be completed in two distinct steps. You must strictly follow the instructions and adhere to the specific output format requested for each step.
+"""
+    
+    user_prompt_bird = """* Step 1 Format: <box>[x1,y1,x2,y2]</box>
+
+Step 1: Analyze the following image <image>. Your task is to generate a tight bounding box that covers only the bird with minimal background. Provide the coordinates in the format <box>[x1,y1,x2,y2]</box>."""
+    
+    user_prompt_bg="""* Step 1 Format: <box>[x1,y1,x2,y2]</box>
+
+Step 1: Analyze the following image <image>. Your task is to generate a bounding box that best represents the image background while excluding birds, ensuring the box is as large as possible and no part of any bird falls within this bounding box. Provide the coordinates in the format <box>[x1,y1,x2,y2]</box>."""
+
+
+user_prompt="""* Step 1 Format: <fore_box>[x1,y1,x2,y2]</fore_box>,<back_box>[x1,y1,x2,y2]</back_box>
+
+Step 1: Analyze the following image <image>. Your task is to generate two bounding boxes to separate the foreground and background of the image. The first one is a tight bounding box that covers only the bird with minimal background; you should provide the coordinates in the format <fore_box>[x1,y1,x2,y2]</fore_box>. The second one is a bounding box that best represents the image background while excluding birds, ensuring the box is as large as possible and no part of any bird falls within this bounding box; you should provide the coordinates in the format <back_box>[x1,y1,x2,y2]</back_box>."""
+
+
+user_prompt_step1="""* Step 1 Format: <fore_box>[x1,y1,x2,y2]</fore_box> and <back_box>[x1,y1,x2,y2]</back_box>
+
+Step 1: Analyze the following image <image>. Your task is to generate two bounding boxes to separate the foreground and background of the image. The first one is a tight bounding box that covers only the bird with minimal background; you should provide the coordinates in the format <fore_box>[x1,y1,x2,y2]</fore_box>. The second one is a bounding box that best represents the image background while excluding birds, ensuring the box is as large as possible and no part of any bird falls within this bounding box; you should provide the coordinates in the format <back_box>[x1,y1,x2,y2]</back_box>."""
+
+user_prompt_step2="""* Step 2 Format: <answer>Waterbird or Landbird</answer>
+
+Step 2: Now, using the cropped image <image> of the bird and the cropped image of the background (based on your previous bounding box) provided, classify the bird as either a "Waterbird" or a "Landbird". Provide your classification result in the format <answer>Waterbird or Landbird</answer>."
+"""
+

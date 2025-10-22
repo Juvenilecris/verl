@@ -1,0 +1,4 @@
+interaction:
+  - name: "celeba"
+    class_name: "verl.interactions.celeba_interaction.CelebAInteraction"
+    config: {}

@@ -174,14 +174,133 @@ class DataParallelPPOActor(BasePPOActor):
                     extra_args["temperature"] = temperature
                     extra_args["return_dict"] = True
 
-                output = self.actor_module(
-                    input_ids=input_ids_rmpad,
-                    attention_mask=None,
-                    position_ids=position_ids_rmpad,
-                    **multi_modal_inputs,
-                    use_cache=False,
-                    **extra_args,
-                )  # prevent model thinks we are generating
+                try:
+                    # 这是你原来的代码
+                    output = self.actor_module(
+                        input_ids=input_ids_rmpad,
+                        attention_mask=None,
+                        position_ids=position_ids_rmpad,
+                        **multi_modal_inputs,
+                        use_cache=False,
+                        **extra_args,
+                    )
+                except ValueError as e:
+                    import os
+                    import datetime
+                    import pickle
+                    
+                    IMAGE_TOKEN_ID = 151655
+                    image_token_count = (input_ids_rmpad == IMAGE_TOKEN_ID).sum().item()
+                    multi_modal_inputs["pixel_values"]=multi_modal_inputs["pixel_values"][:image_token_count*4]
+                    print("="*50)
+                    print("Caught a ValueError! Let's debug...")
+                    print(f"Original error message: {e}")
+                    print("-" * 20)
+
+                    # 创建调试数据保存目录
+                    debug_dir = "/data/wangnn/repos/verl/debug_data"
+                    os.makedirs(debug_dir, exist_ok=True)
+                    
+                    # 生成时间戳作为文件名
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    
+                    # 1. 保存解码的文本
+                    try:
+                        # 尝试加载tokenizer来解码
+                        from transformers import AutoTokenizer
+                        tokenizer_path = "/data/wangnn/models/Qwen2.5-VL-3B-Instruct"  # 根据你的模型路径调整
+                        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
+                        
+                        # 解码input_ids_rmpad
+                        decoded_text = tokenizer.decode(input_ids_rmpad.squeeze(0).cpu().tolist(), skip_special_tokens=False)
+                        
+                        # 保存到文本文件
+                        text_file_path = os.path.join(debug_dir, f"decoded_input_ids_{timestamp}.txt")
+                        with open(text_file_path, 'w', encoding='utf-8') as f:
+                            f.write(f"Error message: {e}\n")
+                            f.write(f"Timestamp: {timestamp}\n")
+                            f.write(f"Image token count: {image_token_count}\n")
+                            f.write(f"Input IDs shape: {input_ids_rmpad.shape}\n")
+                            f.write("="*50 + "\n")
+                            f.write("Decoded text:\n")
+                            f.write(decoded_text)
+                        
+                        print(f"✓ Saved decoded text to: {text_file_path}")
+                        
+                    except Exception as decode_error:
+                        print(f"✗ Failed to decode input_ids: {decode_error}")
+                        # 保存原始token ids作为备选
+                        token_file_path = os.path.join(debug_dir, f"raw_input_ids_{timestamp}.txt")
+                        with open(token_file_path, 'w') as f:
+                            f.write(f"Error message: {e}\n")
+                            f.write(f"Timestamp: {timestamp}\n")
+                            f.write(f"Raw input_ids: {input_ids_rmpad.squeeze(0).cpu().tolist()}\n")
+                        print(f"✓ Saved raw input_ids to: {token_file_path}")
+                    
+                    # 2. 保存pixel_values
+                    if 'pixel_values' in multi_modal_inputs and multi_modal_inputs['pixel_values'] is not None:
+                        try:
+                            pixel_values = multi_modal_inputs['pixel_values'].cpu()
+                            pixel_file_path = os.path.join(debug_dir, f"pixel_values_{timestamp}.pkl")
+                            
+                            # 保存pixel_values和相关信息
+                            debug_data = {
+                                'pixel_values': pixel_values,
+                                'pixel_values_shape': pixel_values.shape,
+                                'image_token_count': image_token_count,
+                                'error_message': str(e),
+                                'timestamp': timestamp,
+                                'image_grid_thw': multi_modal_inputs.get('image_grid_thw', None),
+                                'input_ids_shape': input_ids_rmpad.shape
+                            }
+                            
+                            with open(pixel_file_path, 'wb') as f:
+                                pickle.dump(debug_data, f)
+                            
+                            print(f"✓ Saved pixel_values to: {pixel_file_path}")
+                            print(f"  - Pixel values shape: {pixel_values.shape}")
+                            print(f"  - File size: {os.path.getsize(pixel_file_path) / (1024*1024):.2f} MB")
+                            
+                        except Exception as save_error:
+                            print(f"✗ Failed to save pixel_values: {save_error}")
+                    
+                    # 3. 打印调试信息（保持原有的调试输出）
+                    print("### Shape Information ###")
+                    print(f"Shape of input_ids_rmpad: {input_ids_rmpad.shape}")
+                    if position_ids_rmpad is not None:
+                        print(f"Shape of position_ids_rmpad: {position_ids_rmpad.shape}")
+                    else:
+                        print("position_ids_rmpad is None.")
+
+                    print("\n### Multi-Modal Inputs Details ###")
+                    print(f"Keys in multi_modal_inputs: {multi_modal_inputs.keys()}")
+                    
+                    image_features_key = 'pixel_values' 
+                    if image_features_key in multi_modal_inputs and multi_modal_inputs[image_features_key] is not None:
+                        image_features = multi_modal_inputs[image_features_key]
+                        print(f"Shape of '{image_features_key}': {image_features.shape}")
+                        print(f"Number of image features detected from shape: {image_features.shape[1]}") 
+                        print(f"image_grid_thw: {multi_modal_inputs['image_grid_thw']}")
+                        print(f"len of image_grid_thw: {multi_modal_inputs['image_grid_thw'].shape}")
+                        image_grid_thw=multi_modal_inputs['image_grid_thw']
+                        h_w_columns = image_grid_thw[:, 1:]
+
+                        total_patches = h_w_columns.prod(dim=1).sum().item()
+                        print(f"total_patches:{total_patches}")
+                    else:
+                        print(f"Could not find the key '{image_features_key}' in multi_modal_inputs or it is None.")
+
+                    print(f"\n### Token Analysis ###")
+                    print(f"Total number of image placeholder tokens (ID: {IMAGE_TOKEN_ID}) found in input_ids_rmpad: {image_token_count}")
+                    
+                    print("="*50)
+                    print(f"Debug data saved to directory: {debug_dir}")
+                    print("="*50)
+                    
+                    # 在打印完所有信息后，重新抛出异常，以便程序能按预期停止
+                    raise e
+                    
+                
 
                 if self.use_fused_kernels:
                     log_probs = output.log_probs.squeeze(0)  # (total_nnz,)
@@ -386,7 +505,7 @@ class DataParallelPPOActor(BasePPOActor):
             select_keys.append("rollout_log_probs")
 
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
-        non_tensor_select_keys = ["multi_modal_inputs"] if has_multi_modal_inputs else []
+        non_tensor_select_keys = ["multi_modal_inputs","extra_info"] if has_multi_modal_inputs else []
 
         data = data.select(batch_keys=select_keys, non_tensor_batch_keys=non_tensor_select_keys)
 
@@ -418,7 +537,12 @@ class DataParallelPPOActor(BasePPOActor):
                     old_log_prob = model_inputs["old_log_probs"]
                     rollout_log_probs = model_inputs["rollout_log_probs"] if self.config.tis_imp_ratio_cap > 0 else None
                     advantages = model_inputs["advantages"]
-
+                    if self.config.weight_by_group :
+                        weights=[]
+                        for dict in model_inputs["extra_info"]:
+                            weight = self.config.group_weights[dict["y"]][dict["place"]]
+                            # weight = -weight if dict["is_negative"] else weight
+                            weights.append(weight)
                     entropy_coeff = self.config.entropy_coeff
                     loss_agg_mode = self.config.loss_agg_mode
 
@@ -453,6 +577,7 @@ class DataParallelPPOActor(BasePPOActor):
                         loss_agg_mode=loss_agg_mode,
                         config=self.config,
                         rollout_log_probs=rollout_log_probs,
+                        weights=weights if self.config.weight_by_group else None
                     )
 
                     if entropy_coeff != 0:

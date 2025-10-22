@@ -1,0 +1,86 @@
+{
+    "vcd": {
+        "group_accuracy": {
+            "Waterbird on Water": {
+                "accuracy": 90.81,
+                "correct": 583,
+                "total": 642
+            },
+            "Waterbird on Land": {
+                "accuracy": 83.96,
+                "correct": 539,
+                "total": 642
+            },
+            "Landbird on Water": {
+                "accuracy": 68.87,
+                "correct": 1553,
+                "total": 2255
+            },
+            "Landbird on Land": {
+                "accuracy": 92.95,
+                "correct": 2096,
+                "total": 2255
+            }
+        },
+        "summary_accuracy": {
+            "Matched": {
+                "accuracy": 92.47,
+                "correct": 2679,
+                "total": 2897
+            },
+            "Mismatched": {
+                "accuracy": 72.21,
+                "correct": 2092,
+                "total": 2897
+            },
+            "Overall": {
+                "accuracy": 82.34,
+                "correct": 4771,
+                "total": 5794
+            }
+        },
+        "skipped_samples": 0
+    },
+    "original": {
+        "group_accuracy": {
+            "Waterbird on Water": {
+                "accuracy": 0,
+                "correct": 0,
+                "total": 0
+            },
+            "Waterbird on Land": {
+                "accuracy": 0,
+                "correct": 0,
+                "total": 0
+            },
+            "Landbird on Water": {
+                "accuracy": 0,
+                "correct": 0,
+                "total": 0
+            },
+            "Landbird on Land": {
+                "accuracy": 0,
+                "correct": 0,
+                "total": 0
+            }
+        },
+        "summary_accuracy": {
+            "Matched": {
+                "accuracy": 0,
+                "correct": 0,
+                "total": 0
+            },
+            "Mismatched": {
+                "accuracy": 0,
+                "correct": 0,
+                "total": 0
+            },
+            "Overall": {
+                "accuracy": 0,
+                "correct": 0,
+                "total": 0
+            }
+        },
+        "skipped_samples": 5794
+    }
+}
